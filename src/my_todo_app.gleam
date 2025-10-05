@@ -1,0 +1,197 @@
+import gleam/dynamic/decode
+import gleam/int
+import gleam/io
+import gleam/json
+import gleam/list
+import gleam/string
+
+import argv
+import simplifile
+
+const filepath = "src/tasks.json"
+
+const error_json = "Tasks file is not valid JSON or doesn't exist!"
+
+const usage = "Usage:\ntodo ls - shows tasks\ntodo done - shows done tasks\ntodo add <task> - adds task\ntodo done <num> - completes the task\ntodo reset <done/cur/all> - resets tasks specified"
+
+type Category {
+  Tasks
+  Done
+  All
+}
+
+fn get_by_pos(l: List(a), pos: Int) -> Result(a, Nil) {
+  l
+  |> list.split(pos - 1)
+  |> fn(x) { x.1 |> list.first }
+}
+
+fn load_done() -> Result(List(String), Nil) {
+  let parse_done = {
+    use done <- decode.field("done", decode.list(decode.string))
+    decode.success(done)
+  }
+
+  let data = case simplifile.read(filepath) {
+    Ok(data) -> data
+    Error(_) -> "no file"
+  }
+
+  case json.parse(data, parse_done) {
+    Ok(done) -> Ok(done)
+    Error(_) -> Error(Nil)
+  }
+}
+
+fn load_tasks() -> Result(List(String), Nil) {
+  let parse_tasks = {
+    use tasks <- decode.field("tasks", decode.list(decode.string))
+    decode.success(tasks)
+  }
+
+  let data = case simplifile.read(filepath) {
+    Ok(data) -> data
+    Error(_) -> "no file"
+  }
+
+  case json.parse(data, parse_tasks) {
+    Ok(tasks) -> Ok(tasks)
+    Error(_) -> Error(Nil)
+  }
+}
+
+fn add_numeration(l: List(String), start_with: Int) -> List(String) {
+  case l {
+    [first, ..rest] ->
+      list.append(
+        [int.to_string(start_with) <> ". " <> first],
+        add_numeration(rest, start_with + 1),
+      )
+    [] -> []
+  }
+}
+
+fn add_task(task: String) -> Result(Nil, Nil) {
+  case load_tasks(), load_done() {
+    Ok(tasks), Ok(done) ->
+      case overwrite(list.append(tasks, [task]), done) {
+        Ok(_) -> Ok(Nil)
+        Error(_) -> Error(Nil)
+      }
+    _, _ -> Error(Nil)
+  }
+}
+
+fn done_task(num: Int) -> Result(String, Nil) {
+  case load_tasks(), load_done() {
+    Ok(tasks), Ok(done) -> {
+      let done_task = case get_by_pos(tasks, num) {
+        Ok(task) -> task
+        Error(_) -> ""
+      }
+      case done_task != "" {
+        True ->
+          case
+            overwrite(
+              list.split(tasks, num - 1)
+                |> fn(x) { #(x.0, list.drop(x.1, 1)) }
+                |> fn(x) { list.append(x.0, x.1) },
+              list.append(done, [done_task]),
+            )
+          {
+            Ok(_) -> Ok(done_task)
+            Error(_) -> Error(Nil)
+          }
+        False -> Error(Nil)
+      }
+    }
+    _, _ -> Error(Nil)
+  }
+}
+
+fn overwrite(
+  tasks: List(String),
+  done: List(String),
+) -> Result(Nil, simplifile.FileError) {
+  json.object([
+    #("tasks", json.array(tasks, json.string)),
+    #("done", json.array(done, json.string)),
+  ])
+  |> json.to_string
+  |> fn(x) { simplifile.write(filepath, x) }
+}
+
+// TODO reset
+fn reset(what: Category) -> Result(Nil, Nil) {
+  case load_tasks(), load_done() {
+    Ok(tasks), Ok(done) -> {
+      let res = case what {
+        Tasks -> overwrite([], done)
+        Done -> overwrite(tasks, [])
+        All -> overwrite([], [])
+      }
+      case res {
+        Ok(_) -> Ok(Nil)
+        Error(_) -> Error(Nil)
+      }
+    }
+    _, _ -> Error(Nil)
+  }
+}
+
+pub fn main() -> Nil {
+  case argv.load().arguments {
+    ["ls"] ->
+      case load_tasks() {
+        Ok(tasks) ->
+          tasks
+          |> add_numeration(1)
+          |> fn(x) { list.append(["Your tasks are: "], x) }
+          |> string.join("\n")
+          |> io.println
+        Error(_) -> io.println_error(error_json)
+      }
+    ["done"] ->
+      case load_done() {
+        Ok(tasks) ->
+          tasks
+          |> add_numeration(1)
+          |> fn(x) { list.append(["Your completed tasks are:"], x) }
+          |> string.join("\n")
+          |> io.println
+        Error(_) -> io.println_error(error_json)
+      }
+    ["add", ..task] ->
+      case add_task(string.join(task, " ")) {
+        Ok(_) -> io.println(string.join(task, " ") <> " was added!")
+        Error(_) -> io.println_error(error_json)
+      }
+    ["done", str_num] ->
+      case int.parse(str_num) {
+        Ok(num) ->
+          case done_task(num) {
+            Ok(task) ->
+              io.println("task \"" <> task <> "\" was completed! Congrats!")
+            Error(_) -> io.println_error("Wrong pos fucking dumbass!")
+          }
+        Error(_) -> io.println_error("dude, what did you type?")
+      }
+    ["reset", "cur"] ->
+      case reset(Tasks) {
+        Ok(_) -> io.println("Reset current tasks!")
+        Error(_) -> io.println_error(error_json)
+      }
+    ["reset", "done"] ->
+      case reset(Done) {
+        Ok(_) -> io.println("Reset done tasks!")
+        Error(_) -> io.println_error(error_json)
+      }
+    ["reset", "all"] ->
+      case reset(All) {
+        Ok(_) -> io.println("Reset all!")
+        Error(_) -> io.println_error(error_json)
+      }
+    [_, ..] -> io.println(usage)
+    [] -> io.println(usage)
+  }
+}
