@@ -1,24 +1,11 @@
-# my_todo_app
+# To-do CLI app on Gleam
 
-[![Package Version](https://img.shields.io/hexpm/v/my_todo_app)](https://hex.pm/packages/my_todo_app)
-[![Hex Docs](https://img.shields.io/badge/hex-docs-ffaff3)](https://hexdocs.pm/my_todo_app/)
+I hope my code is any good.
 
-```sh
-gleam add my_todo_app@1
-```
-```gleam
-import my_todo_app
+### Features:
+- Add tasks
+- Mark tasks as done
+- View done tasks
+- Reset tasks
 
-pub fn main() -> Nil {
-  // TODO: An example of the project in use
-}
-```
-
-Further documentation can be found at <https://hexdocs.pm/my_todo_app>.
-
-## Development
-
-```sh
-gleam run   # Run the project
-gleam test  # Run the tests
-```
+> Run the program without arguments to see usage.
