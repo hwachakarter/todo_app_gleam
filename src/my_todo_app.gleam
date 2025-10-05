@@ -31,6 +31,16 @@ fn get_by_pos(l: List(a), pos: Int) -> Result(a, Nil) {
   |> fn(x) { x.1 |> list.first }
 }
 
+// designed to be used inside `use`
+fn load_all(
+  next: fn(#(List(String), List(String))) -> Result(a, Nil),
+) -> Result(a, Nil) {
+  case load(Tasks), load(Done) {
+    Ok(tasks), Ok(done) -> next(#(tasks, done))
+    _, _ -> Error(Nil)
+  }
+}
+
 fn load(what: Category) -> Result(List(String), Nil) {
   let field = case what {
     Tasks -> "tasks"
@@ -62,41 +72,29 @@ fn add_numeration(l: List(String), start_with: Int) -> List(String) {
 }
 
 fn add_task(task: String) -> Result(Nil, Nil) {
-  case load(Tasks), load(Done) {
-    Ok(tasks), Ok(done) ->
-      case overwrite(list.append(tasks, [task]), done) {
-        Ok(_) -> Ok(Nil)
-        Error(_) -> Error(Nil)
-      }
-    _, _ -> Error(Nil)
+  use #(tasks, done) <- load_all()
+  case overwrite(list.append(tasks, [task]), done) {
+    Ok(_) -> Ok(Nil)
+    Error(_) -> Error(Nil)
   }
 }
 
 fn done_task(num: Int) -> Result(String, Nil) {
-  case load(Tasks), load(Done) {
-    Ok(tasks), Ok(done) -> {
-      let done_task = case get_by_pos(tasks, num) {
-        Ok(task) -> task
-        Error(_) -> ""
-      }
-      case done_task != "" {
-        True ->
-          case
-            overwrite(
-              list.split(tasks, num - 1)
-                // this gets rid of the tasks by its pos
-                |> fn(x) { #(x.0, list.drop(x.1, 1)) }
-                |> fn(x) { list.append(x.0, x.1) },
-              list.append(done, [done_task]),
-            )
-          {
-            Ok(_) -> Ok(done_task)
-            Error(_) -> Error(Nil)
-          }
-        False -> Error(Nil)
-      }
-    }
-    _, _ -> Error(Nil)
+  use #(tasks, done) <- load_all()
+  use done_task <- result.try(get_by_pos(tasks, num))
+
+  let res =
+    overwrite(
+      list.split(tasks, num - 1)
+        // drops task by num
+        |> fn(x) { #(x.0, list.drop(x.1, 1)) }
+        |> fn(x) { list.append(x.0, x.1) },
+      list.append(done, [done_task]),
+    )
+
+  case res {
+    Ok(_) -> Ok(done_task)
+    Error(_) -> Error(Nil)
   }
 }
 
@@ -113,16 +111,12 @@ fn overwrite(
 }
 
 fn reset(what: Category) -> Result(Nil, Nil) {
-  case load(Tasks), load(Done) {
-    Ok(tasks), Ok(done) -> {
-      case what {
-        Tasks -> overwrite([], done)
-        Done -> overwrite(tasks, [])
-      }
-      |> result.replace_error(Nil)
-    }
-    _, _ -> Error(Nil)
+  use #(tasks, done) <- load_all()
+  case what {
+    Tasks -> overwrite([], done)
+    Done -> overwrite(tasks, [])
   }
+  |> result.replace_error(Nil)
 }
 
 pub fn main() -> Nil {
@@ -149,7 +143,7 @@ pub fn main() -> Nil {
       }
     ["add", ..task] ->
       case add_task(string.join(task, " ")) {
-        Ok(_) -> io.println(string.join(task, " ") <> " was added!")
+        Ok(_) -> io.println("\"" <> string.join(task, " ") <> "\" was added!")
         Error(_) -> io.println_error(error_json)
       }
     ["done", str_num] ->
