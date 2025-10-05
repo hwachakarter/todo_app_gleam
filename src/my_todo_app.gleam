@@ -23,7 +23,6 @@ todo reset <done/cur/all> - resets tasks specified"
 type Category {
   Tasks
   Done
-  All
 }
 
 fn get_by_pos(l: List(a), pos: Int) -> Result(a, Nil) {
@@ -36,7 +35,6 @@ fn load(what: Category) -> Result(List(String), Nil) {
   let field = case what {
     Tasks -> "tasks"
     Done -> "done"
-    All -> "won't happen"
   }
 
   let parser = {
@@ -117,15 +115,11 @@ fn overwrite(
 fn reset(what: Category) -> Result(Nil, Nil) {
   case load(Tasks), load(Done) {
     Ok(tasks), Ok(done) -> {
-      let res = case what {
+      case what {
         Tasks -> overwrite([], done)
         Done -> overwrite(tasks, [])
-        All -> overwrite([], [])
       }
-      case res {
-        Ok(_) -> Ok(Nil)
-        Error(_) -> Error(Nil)
-      }
+      |> result.replace_error(Nil)
     }
     _, _ -> Error(Nil)
   }
@@ -179,9 +173,9 @@ pub fn main() -> Nil {
         Error(_) -> io.println_error(error_json)
       }
     ["reset", "all"] ->
-      case reset(All) {
-        Ok(_) -> io.println("Reset all!")
-        Error(_) -> io.println_error(error_json)
+      case reset(Tasks), reset(Done) {
+        Ok(_), Ok(_) -> io.println("Reset all!")
+        _, _ -> io.println_error(error_json)
       }
     [_, ..] -> io.println(usage)
     [] -> io.println(usage)
