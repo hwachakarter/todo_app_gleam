@@ -1,5 +1,6 @@
 *.beam
 *.ez
+tasks.json
 /build
 erl_crash.dump
 .DS_Store
